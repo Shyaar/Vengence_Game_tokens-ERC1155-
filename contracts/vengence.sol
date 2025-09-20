@@ -120,7 +120,8 @@ contract Vengence is IERC1155 {
             require(totalSupplyOfTokens[_id] < 1, "Batman Nft already Exist");
 
             _tokenURIs[_id] = _uri;
-            totalSupplyOfTokens[_id] = _amount;
+            _balances[_id][msg.sender] += _amount;
+            totalSupplyOfTokens[_id] += _amount;
 
             emit Events.URI(_uri, _id);
         }
