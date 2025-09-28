@@ -2,7 +2,8 @@
 pragma solidity ^0.8.30;
 
 import {IERC1155, IERC1155Receiver} from "./interfaces/ierc1155.sol";
-import {Events} from "./lib/events.sol";
+import {Events} from "./lib/events/events.sol";
+import {Error} from "./lib/errors/Error.sol";
 
 contract Vengence is IERC1155 {
 
@@ -19,7 +20,7 @@ contract Vengence is IERC1155 {
     mapping(uint256 => string) private _tokenURIs;
 
     modifier onlyAdmin{
-        require(msg.sender == admin, "youre not an admin");
+        if (msg.sender != admin) revert Error.NotAdmin();
         _;
     }
 
@@ -29,7 +30,7 @@ contract Vengence is IERC1155 {
         admin = msg.sender;
         mint(0, 10_000_000_000, "");
         mint(1, 10_000_000_000, "");
-        mint(2, 1, "ipfs://QmaZeqnzihdSPSKkrDufPoBW3QVuYvSC6a5NCi9eVK5jhr");
+        mint(2, 1, "ipfs://QmaZeqnzihdSPSKkrDufPoBW3QVuYvSC6a5NCi9eVK5jhr/bat.json");
     }
 
 
@@ -40,12 +41,12 @@ contract Vengence is IERC1155 {
 
     function balanceOfBatch(address[] calldata _owners, uint256[] calldata _ids) external view returns (uint256[] memory balanceOfOwners_){
 
-         require(_owners.length == _ids.length, "Account to ids mismatch, Please have an equal number of both");
+         if (_owners.length != _ids.length) revert Error.AccountIdsMismatch();
 
         uint256[] memory _batchBalance = new uint256[](_owners.length);
 
         for(uint256 i = 0; i < _owners.length; ++i){
-            require(_owners[i] != address(0), "Invalid owner address");
+            if (_owners[i] == address(0)) revert Error.InvalidOwnerAddress();
 
             _batchBalance[i] = _balances[_ids[i]][_owners[i]];
         }
@@ -66,37 +67,37 @@ contract Vengence is IERC1155 {
 
 
     function safeTransferFrom(address _from, address _to, uint256 _id, uint256 _amount, bytes calldata _data) external{
+        if (_to == address(0)) revert Error.TransferToZeroAddress();
         
-        require(_to != address(0), "The receiving account is an address zero:: cannot transfer to this account");
-        
-        require (_from == msg.sender || _operatorApprovals[_from][msg.sender], "you dont have approval to make this transfer");
+        if (_from != msg.sender && !_operatorApprovals[_from][msg.sender]) revert Error.NotApprovedOrSender();
 
-        require(_balances[_id][_from] >0,"insuffcient balance to transfer from");
+        if (_balances[_id][_from] < _amount) revert Error.InsufficientBalance();
         _balances[_id][_from] -= _amount;
         _balances[_id][_to] += _amount;
 
         emit Events.TransferSingle(msg.sender, _from, _to, _id, _amount);
 
         if(_to.code.length >0){
-        require(IERC1155Receiver(_to).onERC1155Received(msg.sender, _from, _id, _amount, _data) == IERC1155Receiver.onERC1155BatchReceived.selector, "Receiver rejected token transfer");
+        if (IERC1155Receiver(_to).onERC1155Received(msg.sender, _from, _id, _amount, _data) != IERC1155Receiver.onERC1155BatchReceived.selector) revert Error.ReceiverRejectedTransfer();
         }
 
     }
 
 
     function safeBatchTransferFrom(address _from, address _to, uint256[] calldata _ids, uint256[] calldata _amounts, bytes calldata _data) external{
-        require(_to != address(0), "The receiving account is an address zero:: cannot transfer to this account");
-        require(_ids.length == _amounts.length, "ids and amounts length mismatch");
-        require (_from == msg.sender || _operatorApprovals[_from][msg.sender], "you dont have approval to make this transfer");
+        if (_to == address(0)) revert Error.TransferToZeroAddress();
+        if (_ids.length != _amounts.length) revert Error.IdsAmountsMismatch();
+        if (_from != msg.sender && !_operatorApprovals[_from][msg.sender]) revert Error.NotApprovedOrSender();
 
         for(uint256 i = 0; i< _ids.length; i++){
+            if (_balances[_ids[i]][_from] < _amounts[i]) revert Error.InsufficientBalance();
             _balances[_ids[i]][_from] -= _amounts[i];
             _balances[_ids[i]][_to] += _amounts[i];
         }
         emit Events.TransferBatch(msg.sender, _from, _to, _ids, _amounts);
 
         if(_to.code.length >0){
-        require(IERC1155Receiver(_to).onERC1155BatchReceived(msg.sender, _from, _ids, _amounts, _data) == IERC1155Receiver.onERC1155BatchReceived.selector, "Receiver rejected token transfer");
+        if (IERC1155Receiver(_to).onERC1155BatchReceived(msg.sender, _from, _ids, _amounts, _data) != IERC1155Receiver.onERC1155BatchReceived.selector) revert Error.ReceiverRejectedTransfer();
         }
 
     }
@@ -104,7 +105,7 @@ contract Vengence is IERC1155 {
     function mint(uint256 _id, uint256 _amount, string memory _uri)  internal {
 
         if(_id == 0 || _id == 1){
-            require(bytes(_uri).length == 0, "you cant set URI for this token");
+            if (bytes(_uri).length != 0) revert Error.URINotAllowed();
 
             _balances[_id][msg.sender] += _amount;
             totalSupplyOfTokens[_id] = _amount;
@@ -113,11 +114,11 @@ contract Vengence is IERC1155 {
 
        
          if (_id == 2) {
-            require(bytes(_uri).length > 0, "you need to pass the URI of this NFT");
+            if (bytes(_uri).length == 0) revert Error.MissingURI();
 
-            require(_amount < 2 , "Batman Nft can only have 1");
+            if (_amount >= 2) revert Error.InvalidBatmanAmount();
 
-            require(totalSupplyOfTokens[_id] < 1, "Batman Nft already Exist");
+            if (totalSupplyOfTokens[_id] >= 1) revert Error.BatmanNFTAlreadyExists();
 
             _tokenURIs[_id] = _uri;
             _balances[_id][msg.sender] += _amount;

@@ -13,6 +13,12 @@ const config: HardhatUserConfig = {
     profiles: {
       default: {
         version: "0.8.30",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
       },
       production: {
         version: "0.8.30",
